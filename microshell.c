@@ -15,7 +15,6 @@
 #include <sys/wait.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <stdio.h>
 
 #define WRONG_ARGS_CD "error: cd: bad arguments\n"
 #define CD_ERROR "error: cd: cannot change directory to "
