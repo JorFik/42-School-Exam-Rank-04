@@ -6,7 +6,7 @@
 /*   By: JFikents <Jfikents@student.42Heilbronn.de> +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/08/21 14:41:02 by JFikents          #+#    #+#             */
-/*   Updated: 2024/08/22 11:50:36 by JFikents         ###   ########.fr       */
+/*   Updated: 2024/08/22 12:35:42 by JFikents         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -16,10 +16,10 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-#define WRONG_ARGS_CD "error: cd: bad arguments\n"
-#define CD_ERROR "error: cd: cannot change directory to "
 #define ERROR_FATAL "error: fatal\n"
-#define ERROR_EXEC "error: cannot execute "
+#define BAD_EXEC "error: cannot execute "
+#define BAD_ARGS "error: cd: bad arguments\n"
+#define BAD_DIRE "error: cd: cannot change directory to "
 
 int	print_error(char *str)
 {
@@ -35,76 +35,75 @@ int	print_error_info(char *str1, char *str2)
 	return (write(2, "\n", 1));
 }
 
-int	cd(char **argv, int delimeter)
+int	cd(char **argv, int delimiter)
 {
-	if (delimeter != 2)
-		return (print_error(WRONG_ARGS_CD));
+	if (delimiter != 2)
+		return (print_error(BAD_ARGS));
 	if (chdir(argv[1]) == -1)
-		return (print_error_info(CD_ERROR, argv[1]));
+		return (print_error_info(BAD_DIRE, argv[1]));
 	return (0);
 }
 
 void	set_pipe(bool has_pipe, int *pipe_fd, int end)
 {
-	if (has_pipe
+	if (has_pipe == true
 		&& (dup2(pipe_fd[end], end) == -1
 			|| close(pipe_fd[0]) == -1
 			|| close(pipe_fd[1]) == -1))
 		exit(print_error(ERROR_FATAL));
 }
 
-int	exec(char **argv, int delimeter, char **envp)
+int	exec(char **argv, int delimiter, char **envp)
 {
-	const bool	has_pipe = argv[delimeter]
-		&& !strcmp(argv[delimeter], "|");
+	const bool	has_pipe = argv[delimiter] && !strcmp(argv[delimiter], "|");
 	int			pipe_fd[2];
 	int			pid;
 	int			status;
 
 	if (!has_pipe && !strcmp(*argv, "cd"))
-		return (cd(argv, delimeter));
+		return (cd(argv, delimiter));
 	if (has_pipe && pipe(pipe_fd) == -1)
 		exit(print_error(ERROR_FATAL));
 	if ((pid = fork()) == -1)
 		exit(print_error(ERROR_FATAL));
 	if (!pid)
 	{
-		argv[delimeter] = NULL;
+		argv[delimiter] = NULL;
 		set_pipe(has_pipe, pipe_fd, STDOUT_FILENO);
 		if (!strcmp(*argv, "cd"))
-			exit(cd(argv, delimeter));
+			exit(cd(argv, delimiter));
 		execve(*argv, argv, envp);
-		exit(print_error_info(ERROR_EXEC, *argv));
+		exit(print_error_info(BAD_EXEC, *argv));
 	}
 	set_pipe(has_pipe, pipe_fd, STDIN_FILENO);
 	waitpid(pid, &status, 0);
 	return (WIFEXITED(status) && WEXITSTATUS(status));
 }
 
-int	get_delimeter_index(char **argv)
+int	get_delimiter_index(char **argv)
 {
-	int	delimeter;
+	int	delimiter;
 
-	delimeter = 0;
-	while (argv[delimeter]
-		&& strcmp(argv[delimeter], "|")
-		&& strcmp(argv[delimeter], ";"))
-		delimeter++;
-	return (delimeter);
+	delimiter = 0;
+	while (argv[delimiter]
+		&& strcmp(argv[delimiter], "|")
+		&& strcmp(argv[delimiter], ";"))
+		delimiter++;
+	return (delimiter);
 }
 
 int	main(int argc, char **argv, char **envp)
 {
-	int			delimeter;
+	int			delimiter;
 	static int	status = 0;
 
-	delimeter = 0;
-	while (argc > 1 && argv[delimeter])
+	delimiter = 0;
+	while (argc > 1 && argv[delimiter])
 	{
-		argv += delimeter + 1;
-		delimeter = get_delimeter_index(argv);
-		if (delimeter)
-			status = exec(argv, delimeter, envp);
+		argv += delimiter + 1;
+		delimiter = get_delimiter_index(argv);
+		if (delimiter)
+			status = exec(argv, delimiter, envp);
 	}
 	return (status);
 }
