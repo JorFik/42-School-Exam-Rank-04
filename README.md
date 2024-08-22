@@ -1,3 +1,4 @@
+## This is a Fork from [Pasqualrossi repo](https://github.com/pasqualerossi/42-School-Exam-Rank-04) modified to be a little more readable in exchange to be a little longer than the original.
 # Exam Question
 
 This exam has 1 question, microshell:
@@ -67,94 +68,102 @@ $>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
-// Function to write an error message to stderr
-int err(char *str)
+// Here we are defining all error messages that we are gonna need for the microshell
+#define ERROR_FATAL "error: fatal\n"
+#define BAD_EXEC "error: cannot execute "
+#define BAD_ARGS "error: cd: bad arguments\n"
+#define BAD_DIRE "error: cd: cannot change directory to "
+
+// Prints the error message and returns a 1 directly to show an error occurring
+int	print_error(char *error_msg)
 {
-    // Loop through each character in the string and write it to stderr
-    while (*str)
-        write(2, str++, 1);
+	while (*error_msg)
+		write(2, error_msg++, 1);
+	return (1);
 }
 
-// Function to change the current working directory
-int cd(char **argv, int i)
+// A wrapper to print_error to print complementary info and a new line at the end
+int	print_error_info(char *str1, char *str2)
 {
-    // If the number of arguments is not 2, print error and exit
-    if (i != 2)
-        return err("error: cd: bad arguments\n"), 1;
-    // If changing the directory fails, print error and exit
-    if (chdir(argv[1]) == -1)
-        return err("error: cd: cannot change directory to "), err(argv[1]), err("\n"), 1;
-    return 0;
+	print_error(str1);
+	print_error(str2);
+	return (write(2, "\n", 1));
 }
 
-// Function to set pipe
-// end == 1 sets stdout to act as write end of our pipe
-// end == 0 sets stdin to act as read end of our pipe
-void set_pipe(int has_pipe, int *fd, int end)
+int	cd(char **argv, int delimeter)
 {
-	if (has_pipe && (dup2(fd[end], end) == -1 || close(fd[0]) == -1 || close(fd[1]) == -1))
-		err("error: fatal\n"), exit(1);
+	if (delimeter != 2)					// Checks the amount of arguments
+		return (print_error(BAD_ARGS));			// Return with an error message stating that the arguments are wrong
+	if (chdir(argv[1]) == -1)				// Changes the directory and check if an error occurs
+		return (print_error_info(BAD_DIRE, argv[1]));	// If there was an error print the error message
+	return (0);
 }
 
-// Function to execute a command
-int exec(char **argv, int i, char **envp)
+void	set_pipe(bool has_pipe, int *pipe_fd, int end)
 {
-    int has_pipe, fd[2], pid, status;
-
-    // Check if the command includes a pipe
-    has_pipe = argv[i] && !strcmp(argv[i], "|");
-
-    // If the command is 'cd', execute it
-    if (!has_pipe && !strcmp(*argv, "cd"))
-        return cd(argv, i);
-
-    // If the command includes a pipe and creating the pipe fails, print error and exit
-    if (has_pipe && pipe(fd) == -1)
-        err("error: fatal\n"), exit(1);
-
-    // Fork the process
-    pid = fork();
-    if (!pid)
-    {
-        argv[i] = 0;
-        // If the command includes a pipe, set write end of pipe, if it fail print error and exit
-        set_pipe(has_pipe, fd, 1);
-        // If the command is 'cd', execute it
-        if (!strcmp(*argv, "cd"))
-            exit(cd(argv, i));
-        // Execute the command
-        execve(*argv, argv, envp);
-        // If executing the command fails, print error and exit
-        err("error: cannot execute "), err(*argv), err("\n"), exit(1);
-    }
-
-    // Wait for the child process to finish
-    waitpid(pid, &status, 0);
-    // If the command includes a pipe, set write end of pipe, if it fail print error and exit
-    set_pipe(has_pipe, fd, 0);
-    // Return the exit status of the child process
-    return WIFEXITED(status) && WEXITSTATUS(status);
+	if (has_pipe == true					// Checks if the command contains a pipe
+		&& (dup2(pipe_fd[end], end) == -1		// If so duplicates the pipe end to the standard end and checks for error
+			|| close(pipe_fd[0]) == -1		// Closes the now unused pipe ends and checks for errors
+			|| close(pipe_fd[1]) == -1))
+		exit(print_error(ERROR_FATAL));			//if any error appears exit with the fatal error message
 }
 
-int main(int, char **argv, char **envp)
+int	exec(char **argv, int delimeter, char **envp)
 {
-    int    i = 0, status = 0;
+	const bool	has_pipe = argv[delimeter]		// It checks if there is a delimeter
+		&& !strcmp(argv[delimeter], "|");		// and if it is a pipe.
+	int			pipe_fd[2];
+	int			pid;
+	int			status;
 
-    // Loop through each following argument
-    while (argv[i])
-    {
-        // Move the pointer to the next argument after the last delimeter / first argument
-    	argv += i + 1;
-    	i = 0;
-        // Loop through each argument until a pipe or semicolon is found
-    	while (argv[i] && strcmp(argv[i], "|") && strcmp(argv[i], ";"))
-			i++;
-        // If there are arguments, execute them
-    	if (i)
-			status = exec(argv, i, envp);
-    }
-    return status;
+	if (!has_pipe && !strcmp(*argv, "cd"))			// If there is not a pipe and our command is cd
+		return (cd(argv, delimeter));			// It executes cd
+	if (has_pipe && pipe(pipe_fd) == -1)			// If there is a Pipe it creates the pipe and check that the creation was a success
+		exit(print_error(ERROR_FATAL));
+	if ((pid = fork()) == -1)				// Creates the fork and checks for errors in its creation
+		exit(print_error(ERROR_FATAL));
+	if (!pid)						// If pid == 0 it is the child process
+	{
+		argv[delimeter] = NULL;				// The delimiter is set to NULL, that way any function that uses the arguments, can't look pass the delimeter
+		set_pipe(has_pipe, pipe_fd, STDOUT_FILENO);	// Sets the pipe to output information
+		if (!strcmp(*argv, "cd"))			// If the command is cd
+			exit(cd(argv, delimeter));		// Exit with the exit code generated by executing cd.
+		execve(*argv, argv, envp);			// Any other command is executed by Execve
+		exit(print_error_info(BAD_EXEC, *argv));	// If the execution failed exit with the error message informing what it tried to execute
+	}
+	set_pipe(has_pipe, pipe_fd, STDIN_FILENO);		// In the main proccess prepare the pipe to Read from the input side
+	waitpid(pid, &status, 0);				// Wait for the child to execute and save its status
+	return (WIFEXITED(status) && WEXITSTATUS(status));	// Check if it exited normally and return its exit status
+}
+
+int	get_delimeter_index(char **argv)
+{
+	int	delimeter;
+
+	delimeter = 0;
+	while (argv[delimeter]					// Create a loop checking if there is still a string
+		&& strcmp(argv[delimeter], "|")			// If that string is not a Pipe
+		&& strcmp(argv[delimeter], ";"))		// and that it is not a semicolon either
+		delimeter++;					// Advance through the loop
+	return (delimeter);					// return the index where there is no more strings or you found a pipe / semicolon
+}
+
+int	main(int argc, char **argv, char **envp)
+{
+	int			delimeter;
+	static int	status = 0;				// Set the default status in case nothing is executed to 0
+
+	delimeter = 0;
+	while (argc > 1 && argv[delimeter])			// Loop while the arguments given were at least 1 and we still have arguments to loop through
+	{
+		argv += delimeter + 1;				// Jump over the delimeter / first argument (the exucutable path / name)
+		delimeter = get_delimeter_index(argv);		// Get the index of the next delimeter (NULL, ';', '|')
+		if (delimeter)					// If there is a command between delimeters
+			status = exec(argv, delimeter, envp);	// execute it and save the status
+	}
+	return (status);					// return the status of the last execution
 }
 ```
 
